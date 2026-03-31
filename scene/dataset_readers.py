@@ -20,6 +20,27 @@ from plyfile import PlyData, PlyElement
 from utils.sh_utils import SH2RGB
 from scene.gaussian_model import BasicPointCloud
 
+
+def find_mask_path(objects_folder, image_filename):
+    image_path = Path(image_filename)
+    stem = image_path.stem
+    suffix = image_path.suffix
+
+    direct_match = Path(objects_folder) / image_path.name
+    if direct_match.exists():
+        return str(direct_match)
+
+    if suffix:
+        same_ext = Path(objects_folder) / f"{stem}{suffix}"
+        if same_ext.exists():
+            return str(same_ext)
+
+    candidates = sorted(Path(objects_folder).glob(f"{stem}.*"))
+    if len(candidates) > 0:
+        return str(candidates[0])
+
+    return None
+
 class CameraInfo(NamedTuple):
     uid: int
     R: np.array
@@ -92,11 +113,12 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, objects_fol
         else:
             assert False, "Colmap camera model not handled: only undistorted datasets (PINHOLE or SIMPLE_PINHOLE cameras) supported!"
 
-        image_path = os.path.join(images_folder, os.path.basename(extr.name))
+        image_basename = os.path.basename(extr.name)
+        image_path = os.path.join(images_folder, image_basename)
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path) if os.path.exists(image_path) else None
-        object_path = os.path.join(objects_folder, image_name + '.png')
-        objects = Image.open(object_path) if os.path.exists(object_path) else None
+        object_path = find_mask_path(objects_folder, image_basename)
+        objects = Image.open(object_path).convert("L") if object_path is not None else None
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height, objects=objects)
@@ -142,7 +164,7 @@ def readColmapSceneInfo(path, images, eval, object_path, llffhold=8, n_views=100
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
     reading_dir = "images" if images == None else images
-    object_dir = 'object_mask' if object_path == None else object_path
+    object_dir = 'mask' if object_path == None else object_path
     cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir), objects_folder=os.path.join(path, object_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 

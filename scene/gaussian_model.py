@@ -93,6 +93,11 @@ class GaussianModel:
         self.xyz_gradient_accum = xyz_gradient_accum
         self.denom = denom
         self.optimizer.load_state_dict(opt_dict)
+        for group in self.optimizer.param_groups:
+            if group["name"] == "obj_dc":
+                group["lr"] = training_args.feature_lr
+            else:
+                group["lr"] = 0.0
 
     @property
     def get_scaling(self):
@@ -163,12 +168,12 @@ class GaussianModel:
         self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
         l = [
-            {'params': [self._xyz], 'lr': training_args.position_lr_init * self.spatial_lr_scale, "name": "xyz"},
-            {'params': [self._features_dc], 'lr': training_args.feature_lr, "name": "f_dc"},
-            {'params': [self._features_rest], 'lr': training_args.feature_lr / 20.0, "name": "f_rest"},
-            {'params': [self._opacity], 'lr': training_args.opacity_lr, "name": "opacity"},
-            {'params': [self._scaling], 'lr': training_args.scaling_lr, "name": "scaling"},
-            {'params': [self._rotation], 'lr': training_args.rotation_lr, "name": "rotation"},
+            {'params': [self._xyz], 'lr': 0.0, "name": "xyz"},
+            {'params': [self._features_dc], 'lr': 0.0, "name": "f_dc"},
+            {'params': [self._features_rest], 'lr': 0.0, "name": "f_rest"},
+            {'params': [self._opacity], 'lr': 0.0, "name": "opacity"},
+            {'params': [self._scaling], 'lr': 0.0, "name": "scaling"},
+            {'params': [self._rotation], 'lr': 0.0, "name": "rotation"},
             {'params': [self._objects_dc], 'lr': training_args.feature_lr, "name": "obj_dc"},
         ]
 
@@ -350,7 +355,7 @@ class GaussianModel:
         ''' Learning rate scheduling per step '''
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "xyz":
-                lr = self.xyz_scheduler_args(iteration)
+                lr = 0.0
                 param_group['lr'] = lr
                 return lr
 
@@ -408,14 +413,8 @@ class GaussianModel:
         features_dc[:, 1, 0] = np.asarray(plydata.elements[0]["f_dc_1"])
         features_dc[:, 2, 0] = np.asarray(plydata.elements[0]["f_dc_2"])
 
-        extra_f_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("f_rest_")]
-        extra_f_names = sorted(extra_f_names, key = lambda x: int(x.split('_')[-1]))
-        assert len(extra_f_names)==3*(self.max_sh_degree + 1) ** 2 - 3
-        features_extra = np.zeros((xyz.shape[0], len(extra_f_names)))
-        for idx, attr_name in enumerate(extra_f_names):
-            features_extra[:, idx] = np.asarray(plydata.elements[0][attr_name])
-        # Reshape (P,F*SH_coeffs) to (P, F, SH_coeffs except DC)
-        features_extra = features_extra.reshape((features_extra.shape[0], 3, (self.max_sh_degree + 1) ** 2 - 1))
+        self.max_sh_degree = 0
+        features_extra = np.zeros((xyz.shape[0], 3, 0), dtype=np.float32)
 
         scale_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("scale_")]
         scale_names = sorted(scale_names, key = lambda x: int(x.split('_')[-1]))
@@ -429,9 +428,12 @@ class GaussianModel:
         for idx, attr_name in enumerate(rot_names):
             rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
 
-        objects_dc = np.zeros((xyz.shape[0], self.num_objects, 1))
-        for idx in range(self.num_objects):
-            objects_dc[:,idx,0] = np.asarray(plydata.elements[0]["obj_dc_"+str(idx)])
+        objects_dc = np.zeros((xyz.shape[0], self.num_objects, 1), dtype=np.float32)
+        object_prop_names = {p.name for p in plydata.elements[0].properties}
+        has_object_features = all(f"obj_dc_{idx}" in object_prop_names for idx in range(self.num_objects))
+        if has_object_features:
+            for idx in range(self.num_objects):
+                objects_dc[:, idx, 0] = np.asarray(plydata.elements[0]["obj_dc_" + str(idx)])
 
         self._xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
         self._features_dc = nn.Parameter(torch.tensor(features_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
@@ -441,7 +443,7 @@ class GaussianModel:
         self._rotation = nn.Parameter(torch.tensor(rots, dtype=torch.float, device="cuda").requires_grad_(True))
         self._objects_dc = nn.Parameter(torch.tensor(objects_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))
 
-        self.active_sh_degree = self.max_sh_degree
+        self.active_sh_degree = 0
 
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}

@@ -86,7 +86,11 @@ class Scene:
                                                             "iteration_" + str(self.loaded_iter),
                                                             "point_cloud.ply"))
         else:
-            self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
+            if getattr(args, "custom_ply", ""):
+                print("Loading custom initialization ply:", args.custom_ply)
+                self.gaussians.load_ply(args.custom_ply)
+            else:
+                self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 
     def save(self, iteration):
         point_cloud_path = os.path.join(self.model_path, "point_cloud/iteration_{}".format(iteration))

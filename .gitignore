@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.pyc
+
+# Virtualenvs / env files
+venv/
+.venv/
+env/
+.env
+
+# Models / checkpoints / large binaries
+*.pth
+*.pt
+*.ckpt
+*.h5
+*.onnx
+*.npz
+*.npy
+*.tar
+*.zip
+
+# Data / outputs / media
+media/
+datasets/
+runs/
+checkpoints/
+
+# Build / packaging
+build/
+dist/
+*.egg-info/
+
+# Editor
+.vscode/
+.idea/
+
+# Notebooks
+.ipynb_checkpoints/
+
+# OS
+.DS_Store
