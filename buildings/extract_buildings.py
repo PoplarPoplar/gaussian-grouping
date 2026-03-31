@@ -29,7 +29,18 @@ def extract_buildings(ply_path, classifier_path, out_path):
             f_obj_features[:, i] = vertices[f'obj_dc_{i}']
         
     # 计算 Logits (矩阵乘法) 并获取预测类别
+    # # 修改后的代码：加入置信度过滤
+    # logits = np.dot(f_obj_features, weight.T) + bias
+    # # 1. 计算 Softmax 概率
+    # exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True)) # 减去max防溢出
+    # probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
     
+    # # 2. 提取类别为 1 (建筑) 的概率
+    # building_probs = probs[:, 1]
+    
+    # # 3. 设定严格的阈值 (您可以尝试 0.8, 0.9, 0.95 等)
+    # THRESHOLD = 0.90
+    # building_mask = (building_probs > THRESHOLD)
     # 原来的代码
     logits = np.dot(f_obj_features, weight.T) + bias
     preds = np.argmax(logits, axis=1)
