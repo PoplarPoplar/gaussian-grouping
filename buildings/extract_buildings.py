@@ -3,7 +3,7 @@ import torch
 import numpy as np
 from plyfile import PlyData, PlyElement
 import argparse
-
+import math
 def extract_buildings(ply_path, classifier_path, out_path):
     print(f"[*] 加载轻量级分类器: {classifier_path}")
     # 读取分类器权重 (映射 16维 -> 2分类)
@@ -42,16 +42,54 @@ def extract_buildings(ply_path, classifier_path, out_path):
     # THRESHOLD = 0.90
     # building_mask = (building_probs > THRESHOLD)
     # 原来的代码
+    # 计算 Logits (矩阵乘法) 
     logits = np.dot(f_obj_features, weight.T) + bias
-    preds = np.argmax(logits, axis=1)
-    building_mask = (preds == 1)
-    num_buildings = np.sum(building_mask)
-    print(f"[!] 发现 {num_buildings} 个建筑物高斯点 (总点数: {num_points})")
     
-    print(f"[*] 正在剥离非建筑区域，另存为: {out_path}")
-    building_vertices = vertices[building_mask]
+    exp_logits = np.exp(logits - np.max(logits, axis=1, keepdims=True))
+    probs = exp_logits / np.sum(exp_logits, axis=1, keepdims=True)
+    building_probs = probs[:, 1]
     
+    # ---------------------------------------------------------
+    # 修正 1：温和的置信度阈值 (保全阴影和边界区域)
+    # ---------------------------------------------------------
+    CONFIDENCE_THRESHOLD = 0.55  # 只要偏向建筑就保留，不要0.85那么苛刻
+    building_mask = (building_probs > CONFIDENCE_THRESHOLD)
+
+    # ---------------------------------------------------------
+    # 修正 2：防误杀的物理属性过滤 (只杀极端的漂浮雾气和巨无霸)
+    # ---------------------------------------------------------
+    def sigmoid(x):
+        return 1 / (1 + np.exp(-x))
+    
+    opacities = sigmoid(vertices['opacity'])
+    # 降低透明度门槛，保留建筑边缘和细小结构 (如栏杆/天线)
+    opacity_mask = opacities > 0.15  
+    
+    scale_0 = np.exp(vertices['scale_0'])
+    scale_1 = np.exp(vertices['scale_1'])
+    scale_2 = np.exp(vertices['scale_2'])
+    max_scales = np.maximum(scale_0, np.maximum(scale_1, scale_2))
+    
+    # 极其重要：把 95 改成 99.5！
+    # 我们只删掉那万分之五的、真正巨大的“天空背景球”，绝对不碰正常的平铺墙面球
+    scale_thresh = np.percentile(max_scales[building_mask], 99.5) 
+    scale_mask = max_scales < scale_thresh
+
+    # 终极 Mask 融合
+    final_mask = building_mask & opacity_mask & scale_mask
+    num_buildings = np.sum(final_mask)
+    print(f"[!] 优化提取后，共发现 {num_buildings} 个高保真建筑物点")
+    
+    building_vertices = vertices[final_mask].copy() 
+
+    # ---------------------------------------------------------
+    # 修正 3：彻底删除“动态几何微缩 (Shrinking)” 代码
+    # 绝对保持原始高斯的 scale 原封不动，防止出现裂缝和密度降低
+    # (即：不要再对 building_vertices['scale_0'] 执行减法操作了)
+    # ---------------------------------------------------------
+
     # 构建并保存新的 PLY
+    print(f"[*] 正在保存高密度建筑点云至: {out_path}")
     new_element = PlyElement.describe(building_vertices, 'vertex')
     PlyData([new_element], text=False, byte_order='<').write(out_path)
     print("[*] 建筑物提取完美完成！")

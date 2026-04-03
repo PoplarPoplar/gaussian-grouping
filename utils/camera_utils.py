@@ -51,8 +51,7 @@ def loadCam(args, id, cam_info, resolution_scale):
     objects = None
     if cam_info.objects is not None:
         object_mask = cam_info.objects.resize(resolution, Image.NEAREST)
-        object_mask = np.array(object_mask, dtype=np.uint8)
-        object_mask = (object_mask > 0).astype(np.int64)
+        object_mask = np.array(object_mask, dtype=np.int64)
         objects = torch.from_numpy(object_mask)
 
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 

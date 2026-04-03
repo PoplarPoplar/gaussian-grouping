@@ -25,6 +25,11 @@ datasets/
 runs/
 checkpoints/
 
+# LOD2 generated artifacts
+lod2/**/*.obj
+lod2/intermediate/
+lod2/1/
+
 # Build / packaging
 build/
 dist/

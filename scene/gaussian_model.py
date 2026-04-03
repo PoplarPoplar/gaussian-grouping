@@ -403,37 +403,40 @@ class GaussianModel:
     def load_ply(self, path):
         plydata = PlyData.read(path)
 
-        xyz = np.stack((np.asarray(plydata.elements[0]["x"]),
-                        np.asarray(plydata.elements[0]["y"]),
-                        np.asarray(plydata.elements[0]["z"])),  axis=1)
-        opacities = np.asarray(plydata.elements[0]["opacity"])[..., np.newaxis]
+        def field_copy(name):
+            return np.array(plydata.elements[0][name], copy=True)
 
-        features_dc = np.zeros((xyz.shape[0], 3, 1))
-        features_dc[:, 0, 0] = np.asarray(plydata.elements[0]["f_dc_0"])
-        features_dc[:, 1, 0] = np.asarray(plydata.elements[0]["f_dc_1"])
-        features_dc[:, 2, 0] = np.asarray(plydata.elements[0]["f_dc_2"])
+        xyz = np.stack((field_copy("x"),
+                        field_copy("y"),
+                        field_copy("z")),  axis=1).astype(np.float32, copy=False)
+        opacities = field_copy("opacity")[..., np.newaxis].astype(np.float32, copy=False)
+
+        features_dc = np.zeros((xyz.shape[0], 3, 1), dtype=np.float32)
+        features_dc[:, 0, 0] = field_copy("f_dc_0")
+        features_dc[:, 1, 0] = field_copy("f_dc_1")
+        features_dc[:, 2, 0] = field_copy("f_dc_2")
 
         self.max_sh_degree = 0
         features_extra = np.zeros((xyz.shape[0], 3, 0), dtype=np.float32)
 
         scale_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("scale_")]
         scale_names = sorted(scale_names, key = lambda x: int(x.split('_')[-1]))
-        scales = np.zeros((xyz.shape[0], len(scale_names)))
+        scales = np.zeros((xyz.shape[0], len(scale_names)), dtype=np.float32)
         for idx, attr_name in enumerate(scale_names):
-            scales[:, idx] = np.asarray(plydata.elements[0][attr_name])
+            scales[:, idx] = field_copy(attr_name)
 
         rot_names = [p.name for p in plydata.elements[0].properties if p.name.startswith("rot")]
         rot_names = sorted(rot_names, key = lambda x: int(x.split('_')[-1]))
-        rots = np.zeros((xyz.shape[0], len(rot_names)))
+        rots = np.zeros((xyz.shape[0], len(rot_names)), dtype=np.float32)
         for idx, attr_name in enumerate(rot_names):
-            rots[:, idx] = np.asarray(plydata.elements[0][attr_name])
+            rots[:, idx] = field_copy(attr_name)
 
         objects_dc = np.zeros((xyz.shape[0], self.num_objects, 1), dtype=np.float32)
         object_prop_names = {p.name for p in plydata.elements[0].properties}
         has_object_features = all(f"obj_dc_{idx}" in object_prop_names for idx in range(self.num_objects))
         if has_object_features:
             for idx in range(self.num_objects):
-                objects_dc[:, idx, 0] = np.asarray(plydata.elements[0]["obj_dc_" + str(idx)])
+                objects_dc[:, idx, 0] = field_copy("obj_dc_" + str(idx))
 
         self._xyz = nn.Parameter(torch.tensor(xyz, dtype=torch.float, device="cuda").requires_grad_(True))
         self._features_dc = nn.Parameter(torch.tensor(features_dc, dtype=torch.float, device="cuda").transpose(1, 2).contiguous().requires_grad_(True))

@@ -1,12 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Run clean_pointcloud for CUHK dataset
-# Usage: sh script/run_clean_pointcloud_cuhk.sh [additional python args]
+# Editable settings (直接在脚本顶部修改这些变量)
+PYTHON_CMD="python"
+INPUT_PLY="/media/liu/my_pssd/program/data_milo_run/gaussian_group/gongan/pure_buildings.ply"
+OUTPUT_PLY="/media/liu/my_pssd/program/data_milo_run/gaussian_group/gongan/cleaned_buildings.ply"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PYTHON_CMD="python"
+EXTRA_ARGS=()
+while [[ "$#" -gt 0 ]]; do
+  EXTRA_ARGS+=("$1"); shift
+done
 
 "${PYTHON_CMD}" "${SCRIPT_DIR}/../buildings/clean_pointcloud.py" \
-  --input /media/liu/my_pssd/program/data_milo_run/gaussian_group/cuhk/pure_buildings.ply \
-  --output /media/liu/my_pssd/program/data_milo_run/gaussian_group/cuhk/cleaned_buildings.ply "$@"
+  --input "${INPUT_PLY}" \
+  --output "${OUTPUT_PLY}" "${EXTRA_ARGS[@]}"

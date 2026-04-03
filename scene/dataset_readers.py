@@ -41,6 +41,15 @@ def find_mask_path(objects_folder, image_filename):
 
     return None
 
+
+def load_object_mask(object_path):
+    """Load a grayscale object mask and keep the original semantic ids.
+
+    For your current data, the expected meaning is:
+    0 = background, 1 = wall, 2 = roof.
+    """
+    return Image.open(object_path).convert("L")
+
 class CameraInfo(NamedTuple):
     uid: int
     R: np.array
@@ -118,7 +127,7 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, objects_fol
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path) if os.path.exists(image_path) else None
         object_path = find_mask_path(objects_folder, image_basename)
-        objects = Image.open(object_path).convert("L") if object_path is not None else None
+        objects = load_object_mask(object_path) if object_path is not None else None
 
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
                               image_path=image_path, image_name=image_name, width=width, height=height, objects=objects)

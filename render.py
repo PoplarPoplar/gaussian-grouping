@@ -91,7 +91,9 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         rendering_obj = results["render_object"]
         
         logits = classifier(rendering_obj)
-        pred_obj = torch.argmax(logits,dim=0)
+        pred_obj = torch.argmax(logits,dim=0).to(torch.uint8) + 1
+        bg_mask = torch.sum(torch.abs(rendering_obj), dim=0) == 0
+        pred_obj[bg_mask] = 0
         pred_obj_mask = visualize_obj(pred_obj.cpu().numpy().astype(np.uint8))
         
 

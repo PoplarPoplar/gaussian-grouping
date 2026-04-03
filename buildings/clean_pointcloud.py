@@ -27,13 +27,15 @@ def clean_buildings(input_ply, output_ply):
     
     print(f"[*] SOR 过滤后剩余点数: {len(sor_indices)}")
 
+    bbox = pcd_sor.get_axis_aligned_bounding_box()
+    print(f"[*] 点云边界框尺寸 (X, Y, Z): {bbox.get_extent()}")
     # ---------------------------------------------------------
     # 过滤阶段 2：DBSCAN 聚类移除悬空的“孤岛”块
     # ---------------------------------------------------------
     print("[*] 正在执行 DBSCAN 物理聚类 (请耐心等待)...")
     # eps: 聚类物理距离(米/坐标单位), min_points: 成为一个实体的最少点数
     # 注意：如果 COLMAP 的尺度比较小，可能需要微调 eps (比如 0.5, 1.0, 2.0)
-    labels = np.array(pcd_sor.cluster_dbscan(eps=1.5, min_points=100, print_progress=True))
+    labels = np.array(pcd_sor.cluster_dbscan(eps=0.5, min_points=100, print_progress=True))#1.5
     
     # 统计每个聚类簇的点数
     max_label = labels.max()
@@ -42,7 +44,7 @@ def clean_buildings(input_ply, output_ply):
     # 我们只保留那些点数超级多的大簇（真正的建筑物），丢弃孤立的小漂浮块
     valid_dbscan_indices = []
     # 假设一栋楼至少要有 5000 个高斯点（您可以根据实际稠密度调大或调小）
-    MIN_POINTS_PER_BUILDING = 5000 
+    MIN_POINTS_PER_BUILDING = 800 
     
     for i in range(max_label + 1):
         cluster_indices = np.where(labels == i)[0]

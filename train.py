@@ -30,9 +30,17 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     gaussians.training_setup(opt)
     initial_num_points = gaussians.get_xyz.shape[0]
     num_classes = dataset.num_classes
+    train_cameras = scene.getTrainCameras()
+    if train_cameras:
+        max_label = 0
+        for cam in train_cameras:
+            if cam.objects is not None:
+                max_label = max(max_label, int(cam.objects.max().item()))
+        # masks use 0=background(ignore), 1=wall, 2=roof, so classifier needs 2 outputs
+        num_classes = max(num_classes, max_label)
     print("Num classes: ",num_classes)
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
-    cls_criterion = torch.nn.CrossEntropyLoss(reduction='none')
+    cls_criterion = torch.nn.CrossEntropyLoss(reduction='mean', ignore_index=-1)
     cls_optimizer = torch.optim.Adam(classifier.parameters(), lr=5e-4)
     classifier.cuda()
     if checkpoint:
@@ -88,9 +96,13 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
         # Object Loss
         gt_obj = viewpoint_cam.objects.cuda().long()
+        gt_obj_fg = torch.full_like(gt_obj, -1)
+        fg_mask = gt_obj > 0
+        # 0 is background and must be ignored; wall/roof become 0/1 for CE
+        gt_obj_fg[fg_mask] = gt_obj[fg_mask] - 1
         logits = classifier(objects)
-        loss_obj = cls_criterion(logits.unsqueeze(0), gt_obj.unsqueeze(0)).squeeze().mean()
-        loss_obj = loss_obj / torch.log(torch.tensor(num_classes))  # normalize to (0,1)
+        loss_obj = cls_criterion(logits.unsqueeze(0), gt_obj_fg.unsqueeze(0))
+        loss_obj = loss_obj / torch.log(torch.tensor(float(max(num_classes, 2)), device=loss_obj.device))  # normalize to (0,1)
 
         Ll1 = torch.tensor(0.0, device="cuda")
 

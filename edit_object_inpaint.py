@@ -79,7 +79,7 @@ def finetune_inpaint(opt, model_path, iteration, views, gaussians, pipeline, bac
         render_pkg = render(viewpoint_cam, gaussians, pipeline, background)
         image, viewspace_point_tensor, visibility_filter, radii, objects = render_pkg["render"], render_pkg["viewspace_points"], render_pkg["visibility_filter"], render_pkg["radii"], render_pkg["render_object"]
 
-        mask2d = viewpoint_cam.objects > 128
+        mask2d = viewpoint_cam.objects > 0
         gt_image = viewpoint_cam.original_image.cuda()
         Ll1 = masked_l1_loss(image, gt_image, ~mask2d)
 
@@ -138,7 +138,9 @@ def render_set(model_path, name, iteration, views, gaussians, pipeline, backgrou
         rendering = results["render"]
         rendering_obj = results["render_object"]
         logits = classifier(rendering_obj)
-        pred_obj = torch.argmax(logits,dim=0)
+        pred_obj = torch.argmax(logits,dim=0).to(torch.uint8) + 1
+        bg_mask = torch.sum(torch.abs(rendering_obj), dim=0) == 0
+        pred_obj[bg_mask] = 0
         pred_obj_mask = visualize_obj(pred_obj.cpu().numpy().astype(np.uint8))
 
         gt_objects = view.objects
@@ -179,11 +181,12 @@ def inpaint(dataset : ModelParams, iteration : int, pipeline : PipelineParams, s
     # 1. load gaussian checkpoint
     gaussians = GaussianModel(dataset.sh_degree)
     scene = Scene(dataset, gaussians, load_iteration=iteration, shuffle=False)
-    num_classes = dataset.num_classes
+    classifier_state = torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth"))
+    num_classes = classifier_state["weight"].shape[0]
     print("Num classes: ",num_classes)
     classifier = torch.nn.Conv2d(gaussians.num_objects, num_classes, kernel_size=1)
     classifier.cuda()
-    classifier.load_state_dict(torch.load(os.path.join(dataset.model_path,"point_cloud","iteration_"+str(scene.loaded_iter),"classifier.pth")))
+    classifier.load_state_dict(classifier_state)
     bg_color = [1,1,1] if dataset.white_background else [0, 0, 0]
     background = torch.tensor(bg_color, dtype=torch.float32, device="cuda")
 
